@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import ProductCard from './components/ProductCard.jsx';
 import ProductModal from './components/ProductModal.jsx';
 import WishlistModal from './components/WishlistModal.jsx';
@@ -23,8 +23,8 @@ const electricVehicles = [
     category: "Sedan",
     dealers: [
       { name: "EcoDrive Tesla Center", location: "San Francisco, CA" },
-      { name: "Tesla Urban Hub", location: "Los Angeles, CA" }
-    ]
+      { name: "Tesla Urban Hub", location: "Los Angeles, CA" },
+    ],
   },
   {
     id: 2,
@@ -39,8 +39,8 @@ const electricVehicles = [
     category: "Truck",
     dealers: [
       { name: "GreenWheels Rivian", location: "Denver, CO" },
-      { name: "Rivian Adventure Store", location: "Seattle, WA" }
-    ]
+      { name: "Rivian Adventure Store", location: "Seattle, WA" },
+    ],
   },
   {
     id: 3,
@@ -53,9 +53,7 @@ const electricVehicles = [
     rating: 4.2,
     safetyRating: 4.8,
     category: "SUV",
-    dealers: [
-      { name: "Ford Electric Depot", location: "Detroit, MI" }
-    ]
+    dealers: [{ name: "Ford Electric Depot", location: "Detroit, MI" }],
   },
   {
     id: 4,
@@ -70,9 +68,9 @@ const electricVehicles = [
     category: "Sedan",
     dealers: [
       { name: "Lucid Luxury Motors", location: "Palo Alto, CA" },
-      { name: "Elite Lucid Gallery", location: "Miami, FL" }
-    ]
-  }
+      { name: "Elite Lucid Gallery", location: "Miami, FL" },
+    ],
+  },
 ];
 
 function App() {
@@ -112,6 +110,7 @@ function App() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [isAddingToCart, setIsAddingToCart] = useState(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
   const itemsPerPage = 8;
 
   useEffect(() => {
@@ -136,8 +135,16 @@ function App() {
     localStorage.setItem('recentlyViewed', JSON.stringify(recentlyViewed));
   }, [recentlyViewed]);
 
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowBackToTop(window.scrollY > 300);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   const toggleDarkMode = () => {
-    setIsDarkMode(prev => !prev);
+    setIsDarkMode((prev) => !prev);
   };
 
   const showToast = (message) => {
@@ -145,9 +152,8 @@ function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const addToCart = async (vehicle) => {
+  const addToCart = (vehicle) => {
     setIsAddingToCart(vehicle.id);
-    await new Promise(resolve => setTimeout(resolve, 500));
     const existingItem = cartItems.find((item) => item.id === vehicle.id);
     if (existingItem) {
       setCartItems(
@@ -174,13 +180,11 @@ function App() {
       return;
     }
     setCartItems(
-      cartItems.map((item) =>
-        item.id === id ? { ...item, quantity } : item
-      )
+      cartItems.map((item) => (item.id === id ? { ...item, quantity } : item))
     );
   };
 
-  const addToWishlist = async (vehicle) => {
+  const addToWishlist = (vehicle) => {
     if (wishlistItems.some((item) => item.id === vehicle.id)) {
       setWishlistItems(wishlistItems.filter((item) => item.id !== vehicle.id));
       showToast(`${vehicle.name} removed from wishlist`);
@@ -217,25 +221,39 @@ function App() {
   const addToRecentlyViewed = (vehicle) => {
     const updatedRecent = [
       vehicle,
-      ...recentlyViewed.filter((v) => v.id !== vehicle.id)
+      ...recentlyViewed.filter((v) => v.id !== vehicle.id),
     ].slice(0, 3);
     setRecentlyViewed(updatedRecent);
   };
 
   const exportCartAsPDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text("Cart Summary", 20, 20);
-    doc.setFontSize(12);
-    let y = 30;
-    cartItems.forEach((item) => {
-      doc.text(`${item.name} (x${item.quantity}): $${(item.price * item.quantity).toLocaleString()}`, 20, y);
-      y += 10;
-    });
-    const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    doc.text(`Total: $${total.toLocaleString()}`, 20, y + 10);
-    doc.save("cart_summary.pdf");
-    showToast("Cart exported as PDF");
+    try {
+      const doc = new jsPDF();
+      doc.setFontSize(16);
+      doc.text("Cart Summary", 20, 20);
+      doc.setFontSize(12);
+      let y = 30;
+      cartItems.forEach((item) => {
+        doc.text(
+          `${item.name} (x${item.quantity}): $${(
+            item.price * item.quantity
+          ).toLocaleString()}`,
+          20,
+          y
+        );
+        y += 10;
+      });
+      const total = cartItems.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      );
+      doc.text(`Total: $${total.toLocaleString()}`, 20, y + 10);
+      doc.save("cart_summary.pdf");
+      showToast("Cart exported as PDF");
+    } catch (error) {
+      showToast("Error exporting PDF");
+      console.error("PDF export failed:", error);
+    }
   };
 
   const handleCheckout = () => {
@@ -248,22 +266,39 @@ function App() {
     showToast("Payment confirmed! Cart cleared.");
   };
 
-  const filteredVehicles = electricVehicles
-    .filter((v) => v.price >= priceFilter[0] && v.price <= priceFilter[1])
-    .filter((v) => v.range >= rangeFilter[0] && v.range <= rangeFilter[1])
-    .filter((v) => v.rating >= ratingFilter)
-    .filter((v) => v.safetyRating >= safetyRatingFilter)
-    .filter((v) => categoryFilter === "All" || v.category === categoryFilter)
-    .filter((v) => (
-      v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      v.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      v.dealers.some(dealer => dealer.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    ))
-    .sort((a, b) => {
-      if (sortOption === "price-low") return a.price - b.price;
-      if (sortOption === "price-high") return b.price - a.price;
-      return 0;
-    });
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Memoize filtered vehicles to optimize performance
+  const filteredVehicles = useMemo(() => {
+    return electricVehicles
+      .filter((v) => v.price >= priceFilter[0] && v.price <= priceFilter[1])
+      .filter((v) => v.range >= rangeFilter[0] && v.range <= rangeFilter[1])
+      .filter((v) => v.rating >= ratingFilter)
+      .filter((v) => v.safetyRating >= safetyRatingFilter)
+      .filter((v) => categoryFilter === "All" || v.category === categoryFilter)
+      .filter((v) =>
+        v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.dealers.some((dealer) =>
+          dealer.name.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      )
+      .sort((a, b) => {
+        if (sortOption === "price-low") return a.price - b.price;
+        if (sortOption === "price-high") return b.price - a.price;
+        return 0;
+      });
+  }, [
+    priceFilter,
+    rangeFilter,
+    ratingFilter,
+    safetyRatingFilter,
+    categoryFilter,
+    searchQuery,
+    sortOption,
+  ]);
 
   const totalPages = Math.ceil(filteredVehicles.length / itemsPerPage);
   const paginatedVehicles = filteredVehicles.slice(
@@ -281,18 +316,30 @@ function App() {
               onClick={() => setIsFilterOpen(!isFilterOpen)}
               className="sm:hidden text-white hover:text-gray-200"
               aria-label="Toggle filters"
+              title="Toggle filters"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1m-4 8H3m10 8H3" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M3 4a1 1 0 011-1h16a1 1 0 011 1m-4 8H3m10 8H3"
+                />
               </svg>
             </button>
             <button
               onClick={() => setIsWishlistOpen(true)}
               className="text-white hover:text-gray-200 relative"
               aria-label="View wishlist"
+              title="View wishlist"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                />
               </svg>
               {wishlistItems.length > 0 && (
                 <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
@@ -304,9 +351,15 @@ function App() {
               onClick={() => setIsCompareOpen(true)}
               className="text-white hover:text-gray-200 relative"
               aria-label="View comparison"
+              title="View comparison"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 6h18M3 12h18M3 18h18" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M3 6h18M3 12h18M3 18h18"
+                />
               </svg>
               {compareItems.length > 0 && (
                 <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
@@ -318,9 +371,15 @@ function App() {
               onClick={() => setIsCartOpen(!isCartOpen)}
               className="text-white hover:text-gray-200 relative"
               aria-label="Toggle cart"
+              title="Toggle cart"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
+                />
               </svg>
               {cartItems.length > 0 && (
                 <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
@@ -332,9 +391,19 @@ function App() {
               onClick={toggleDarkMode}
               className="text-white hover:text-gray-200"
               aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+              title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={isDarkMode ? "M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" : "M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"} />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d={
+                    isDarkMode
+                      ? "M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
+                      : "M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
+                  }
+                />
               </svg>
             </button>
           </div>
@@ -351,16 +420,34 @@ function App() {
               className="w-full p-2 pl-10 border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               aria-label="Search vehicles, descriptions, or dealers"
             />
-            <svg className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            <svg
+              className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
           </div>
         </div>
-        <div className={`mb-4 sm:mb-6 bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-lg transition-all ${isFilterOpen ? 'block' : 'hidden sm:block'}`}>
-          <h2 className="text-base sm:text-lg font-semibold mb-4 text-gray-900 dark:text-white">Filters</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+        <div
+          className={`mb-4 sm:mb-6 bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-lg transition-all ${
+            isFilterOpen ? "block" : "hidden sm:block"
+          }`}
+        >
+          <h2 className="text-base sm:text-lg font-semibold mb-4 text-gray-900 dark:text-white">
+            Filters
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Price Range</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Price Range
+              </label>
               <input
                 type="range"
                 min="0"
@@ -370,10 +457,14 @@ function App() {
                 className="w-full mt-1"
                 aria-label="Filter by price range"
               />
-              <span className="text-sm text-gray-500 dark:text-gray-400">Up to ${priceFilter[1].toLocaleString()}</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                Up to ${priceFilter[1].toLocaleString()}
+              </span>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Range (miles)</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Range (miles)
+              </label>
               <input
                 type="range"
                 min="0"
@@ -383,10 +474,14 @@ function App() {
                 className="w-full mt-1"
                 aria-label="Filter by range"
               />
-              <span className="text-sm text-gray-500 dark:text-gray-400">Up to {rangeFilter[1]} miles</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                Up to {rangeFilter[1]} miles
+              </span>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Min Rating</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Min Rating
+              </label>
               <input
                 type="range"
                 min="0"
@@ -397,10 +492,14 @@ function App() {
                 className="w-full mt-1"
                 aria-label="Filter by minimum rating"
               />
-              <span className="text-sm text-gray-500 dark:text-gray-400">{ratingFilter.toFixed(1)} stars</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {ratingFilter.toFixed(1)} stars
+              </span>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Min Safety Rating</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Min Safety Rating
+              </label>
               <input
                 type="range"
                 min="0"
@@ -411,10 +510,14 @@ function App() {
                 className="w-full mt-1"
                 aria-label="Filter by minimum safety rating"
               />
-              <span className="text-sm text-gray-500 dark:text-gray-400">{safetyRatingFilter.toFixed(1)}/5</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {safetyRatingFilter.toFixed(1)}/5
+              </span>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Category
+              </label>
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
@@ -428,7 +531,9 @@ function App() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Sort By</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Sort By
+              </label>
               <select
                 value={sortOption}
                 onChange={(e) => setSortOption(e.target.value)}
@@ -444,7 +549,9 @@ function App() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
           {isLoading
-            ? Array(4).fill().map((_, i) => <ProductSkeleton key={i} />)
+            ? Array(4)
+                .fill()
+                .map((_, i) => <ProductSkeleton key={i} />)
             : paginatedVehicles.map((vehicle) => (
                 <ProductCard
                   key={vehicle.id}
@@ -456,8 +563,12 @@ function App() {
                   }}
                   onAddToWishlist={addToWishlist}
                   onAddToCompare={addToCompare}
-                  isInWishlist={() => wishlistItems.some((item) => item.id === vehicle.id)}
-                  isInCompare={() => compareItems.some((item) => item.id === vehicle.id)}
+                  isInWishlist={() =>
+                    wishlistItems.some((item) => item.id === vehicle.id)
+                  }
+                  isInCompare={() =>
+                    compareItems.some((item) => item.id === vehicle.id)
+                  }
                   isAdding={isAddingToCart === vehicle.id}
                 />
               ))}
@@ -478,8 +589,8 @@ function App() {
                 onClick={() => setCurrentPage(page)}
                 className={`px-4 py-2 rounded-lg ${
                   currentPage === page
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"
                 }`}
                 aria-label={`Go to page ${page}`}
               >
@@ -498,7 +609,9 @@ function App() {
         )}
         {recentlyViewed.length > 0 && (
           <div className="mt-8">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recently Viewed</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Recently Viewed
+            </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {recentlyViewed.map((vehicle) => (
                 <ProductCard
@@ -511,13 +624,34 @@ function App() {
                   }}
                   onAddToWishlist={addToWishlist}
                   onAddToCompare={addToCompare}
-                  isInWishlist={() => wishlistItems.some((item) => item.id === vehicle.id)}
-                  isInCompare={() => compareItems.some((item) => item.id === vehicle.id)}
+                  isInWishlist={() =>
+                    wishlistItems.some((item) => item.id === vehicle.id)
+                  }
+                  isInCompare={() =>
+                    compareItems.some((item) => item.id === vehicle.id)
+                  }
                   isAdding={isAddingToCart === vehicle.id}
                 />
               ))}
             </div>
           </div>
+        )}
+        {showBackToTop && (
+          <button
+            onClick={scrollToTop}
+            className="fixed bottom-8 right-8 bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 transition-opacity duration-300 z-50"
+            aria-label="Scroll back to top"
+            title="Back to top"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M5 10l7-7m0 0l7 7m-7-7v18"
+              />
+            </svg>
+          </button>
         )}
       </main>
       <Cart
